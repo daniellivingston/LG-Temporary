@@ -87,7 +87,7 @@ jobs:
     - name: Build LaGriT
       run: |
         #make CC=$(CC) CXX=$(CXX) FC=$(FC) exodus
-        make CC=$(CC) CXX=$(CXX) FC=$(FC) WITH_EXODUS=0 release
+        make WITH_EXODUS=0 release
         make test
 
 # ===================================================== #
