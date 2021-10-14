@@ -1,31 +1,172 @@
-name: LaGriT Build Status
+# Based on Adam, C. - "Using GitHub Actions with C++ and CMake"
+# [0]: https://cristianadam.eu/20191222/using-github-actions-with-c-plus-plus-and-cmake/
 
-on:
-  push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
+name: LaGriT Build
+
+on: [push]
 
 jobs:
   build:
+    name: ${{ matrix.config.name }}
+    runs-on: ${{ matrix.config.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+        #- {
+        #    name: "Windows Latest MSVC", artifact: "LaGriT-Windows-MSVC.tar.xz",
+        #    os: windows-latest,
+        #    build_type: "Release", cc: "cl", cxx: "cl",
+        #    environment_script: "C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/VC/Auxiliary/Build/vcvars64.bat"
+        #  }
+        #- {
+        #    name: "Windows Latest MinGW", artifact: "LaGriT-Windows-MinGW.tar.xz",
+        #    os: windows-latest,
+        #    build_type: "Release", cc: "gcc", cxx: "g++"
+        #  }
+        - {
+            name: "Ubuntu Latest GCC", artifact: "LaGriT-Linux.tar.xz",
+            os: ubuntu-latest,
+            build_type: "Release", cc: "gcc", cxx: "g++"
+          }
+        - {
+            name: "macOS Latest Clang", artifact: "LaGriT-macOS.tar.xz",
+            os: macos-latest,
+            build_type: "Release", cc: "clang", cxx: "clang++"
+          }
 
+# ===================================================== #
+# PROVISION DEPENDENCIES & TOOLCHAIN
+# ===================================================== #
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - uses: actions/setup-python@v1
+      with:
+        python-version: '3.x'
+
+    - name: Install cmake
+      run: pip3 install cmake ninja fypp
+
+    - name: Dependencies (Linux)
+      if: contains(matrix.os, 'ubuntu')
+      run: |
+        sudo apt-get update && sudo apt-get upgrade -y
+        sudo apt-get install -y gcc gfortran
+
+        export CC=$(which gcc)
+        export CXX=$(which g++)
+        export FC=$(which gfortran)
+
+    - name: Dependencies (macOS)
+      if: contains(matrix.os, 'macos')
+      run: |
+        brew install gcc || brew upgrade gcc || true
+
+        export CC=$(which clang)
+        export CXX=$(which clang++)
+        export FC=$(which gfortran)
+# ===================================================== #
+# COMPILE & TEST LAGRIT
+# ===================================================== #
+    - name: Build LaGriT
+      run: |
+        make CC=$(CC) CXX=$(CXX) FC=$(FC) exodus
+        make CC=$(CC) CXX=$(CXX) FC=$(FC) release
+        make test
+
+# ===================================================== #
+# UPLOAD BINARY ARTIFACTS
+# ----------------------------------------------------- #
+# Only done on *tagged* commits
+# ===================================================== #
+    - name: Prepare artifact for upload
+      run: |
+        cp src/lagrit ./${{ matrix.config.artifact }}
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v1
+      with:
+        path: ./${{ matrix.config.artifact }}
+        name: ${{ matrix.config.artifact }}
+
+  release:
+    if: contains(github.ref, 'tags/v')
     runs-on: ubuntu-latest
+    needs: build
 
     steps:
-    - uses: actions/checkout@v2
-    - name: Install LaGriT build dependencies
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1.0.0
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        draft: false
+        prerelease: false
+
+    - name: Store Release url
       run: |
-        sudo apt-get update -y && sudo apt-get upgrade -y 
-        sudo apt-get install -y build-essential openssl vim gfortran cmake git \
-        wget libz-dev m4 bison python3 python3-pip python3-setuptools
-    - name: Build ExodusII
-      run: make exodus
-    - name: Build LaGriT
-      run: make release
-    - name: Test LaGriT
-      run: make test
-    - name: Test PyLaGriT
+        echo "${{ steps.create_release.outputs.upload_url }}" > ./upload_url
+
+    - uses: actions/upload-artifact@v1
+      with:
+        path: ./upload_url
+        name: upload_url
+
+  publish:
+    if: contains(github.ref, 'tags/v')
+    name: ${{ matrix.config.name }}
+    runs-on: ${{ matrix.config.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+        - {
+            name: "Windows Latest MSVC", artifact: "Windows-MSVC.tar.xz",
+            os: ubuntu-latest
+          }
+        - {
+            name: "Windows Latest MinGW", artifact: "Windows-MinGW.tar.xz",
+            os: ubuntu-latest
+          }
+        - {
+            name: "Ubuntu Latest GCC", artifact: "Linux.tar.xz",
+            os: ubuntu-latest
+          }
+        - {
+            name: "macOS Latest Clang", artifact: "macOS.tar.xz",
+            os: ubuntu-latest
+          }
+    needs: release
+
+    steps:
+    - name: Download artifact
+      uses: actions/download-artifact@v1
+      with:
+        name: ${{ matrix.config.artifact }}
+        path: ./
+
+    - name: Download URL
+      uses: actions/download-artifact@v1
+      with:
+        name: upload_url
+        path: ./
+    - id: set_upload_url
       run: |
-        cd PyLaGriT/
-        python3 setup.py install
-        python3 -c "from pylagrit import PyLaGriT; lg = PyLaGriT()"
+        upload_url=`cat ./upload_url`
+        echo ::set-output name=upload_url::$upload_url
+
+    - name: Upload to Release
+      id: upload_to_release
+      uses: actions/upload-release-asset@v1.0.1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.set_upload_url.outputs.upload_url }}
+        asset_path: ./${{ matrix.config.artifact }}
+        asset_name: ${{ matrix.config.artifact }}
+        asset_content_type: application/x-gtar
