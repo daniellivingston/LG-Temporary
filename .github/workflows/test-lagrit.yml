@@ -14,25 +14,17 @@ jobs:
       matrix:
         config:
         #- {
-        #    name: "Windows Latest MSVC", artifact: "LaGriT-Windows-MSVC.tar.xz",
+        #    name: "Windows", artifact: "LaGriT-Windows.tar.xz",
         #    os: windows-latest,
-        #    build_type: "Release", cc: "cl", cxx: "cl",
         #    environment_script: "C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/VC/Auxiliary/Build/vcvars64.bat"
         #  }
-        #- {
-        #    name: "Windows Latest MinGW", artifact: "LaGriT-Windows-MinGW.tar.xz",
-        #    os: windows-latest,
-        #    build_type: "Release", cc: "gcc", cxx: "g++"
-        #  }
         - {
-            name: "Ubuntu Latest GCC", artifact: "LaGriT-Linux.tar.xz",
+            name: "Ubuntu", artifact: "LaGriT-Linux.tar.xz",
             os: ubuntu-latest,
-            build_type: "Release", cc: "gcc", cxx: "g++"
           }
         - {
-            name: "macOS Latest Clang", artifact: "LaGriT-macOS.tar.xz",
+            name: "macOS", artifact: "LaGriT-macOS.tar.xz",
             os: macos-latest,
-            build_type: "Release", cc: "clang", cxx: "clang++"
           }
 
 # ===================================================== #
@@ -63,10 +55,6 @@ jobs:
           libnetcdf-dev \
           libnetcdff-dev
 
-        export CC=$(which gcc)
-        export CXX=$(which g++)
-        export FC=$(which gfortran)
-
     - name: Dependencies (macOS)
       if: contains(matrix.os, 'macos')
       run: |
@@ -78,15 +66,11 @@ jobs:
           hdf5 \
           netcdf
 
-        export CC=$(which clang)
-        export CXX=$(which clang++)
-        export FC=$(which gfortran)
 # ===================================================== #
 # COMPILE & TEST LAGRIT
 # ===================================================== #
     - name: Build LaGriT
       run: |
-        #make CC=$(CC) CXX=$(CXX) FC=$(FC) exodus
         make WITH_EXODUS=0 release
         make test
 
@@ -140,23 +124,19 @@ jobs:
       matrix:
         config:
         - {
-            name: "Windows Latest MSVC", artifact: "Windows-MSVC.tar.xz",
+            name: "Windows", artifact: "LaGriT-Windows.tar.xz",
             os: ubuntu-latest
           }
         - {
-            name: "Windows Latest MinGW", artifact: "Windows-MinGW.tar.xz",
+            name: "Ubuntu", artifact: "LaGriT-Linux.tar.xz",
             os: ubuntu-latest
           }
         - {
-            name: "Ubuntu Latest GCC", artifact: "Linux.tar.xz",
+            name: "macOS", artifact: "LaGriT-macOS.tar.xz",
             os: ubuntu-latest
           }
-        - {
-            name: "macOS Latest Clang", artifact: "macOS.tar.xz",
-            os: ubuntu-latest
-          }
-    needs: release
 
+    needs: release
     steps:
     - name: Download artifact
       uses: actions/download-artifact@v1
